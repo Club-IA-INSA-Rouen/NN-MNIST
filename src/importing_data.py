@@ -1,5 +1,6 @@
 import gzip
 import cPickle
+import numpy as np
 
 def importing_data():
     f = gzip.open('../data/mnist.pkl.gz', 'rb')
@@ -12,6 +13,9 @@ def unit_vector(i): # turning the output into something nice :
     e = np.zeros((10,1))
     e[i] = 1.
     return e
+
+def from_unit(e): # gives the integer corresponding to unit vector
+    return np.argmax(e)
 
 def clean_data():
     train, valid, test = importing_data()
