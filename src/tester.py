@@ -14,4 +14,7 @@ print "Should be : " + str(from_unit(y))
 print "Decision is : " + str(nub_net.prevision(x))
 
 # Uncomment if you feel like checkin it up !
-visualize(row)
+# visualize(row)
+batches_size = 100
+nb_epochs = 10
+nub_net.stochGrad(batches_size, nb_epochs, train, test)
