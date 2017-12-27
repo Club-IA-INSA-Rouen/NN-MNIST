@@ -1,9 +1,10 @@
 import numpy as np
+from costs import *
 import random
 
 class Network(object):
     # Neural Network with propagation and backpropagation
-    def __init__(self, layerSizes):
+    def __init__(self, layerSizes, cost=CrossEntropyCost):
         """ let's be careful with matrices sizes !
         nrow = nb neurons in the next layer
             --> goes from first of hidden to output
@@ -13,8 +14,9 @@ class Network(object):
         self.layerSizes = layerSizes # list of nb of neurons per layer
         self.nLayers = len(layerSizes)
         self.biases = [np.random.randn(x,1) for x in layerSizes[1:]]
-        self.weights = [np.random.randn(x,y)
+        self.weights = [np.random.randn(x,y)/np.sqrt(y)
             for x,y in zip(layerSizes[1:],layerSizes[:-1])]
+        self.cost = cost
 
     # propagation: keep doing Input(i+1) = sigmoid(Weight.Input(i) + Bias)
     def propagation(self,input): # input is propagated until it becomes output
@@ -22,7 +24,7 @@ class Network(object):
             input = sig(np.dot(w, input) + b)
         return input
 
-    # same thing but for backprop so we output values of activations and zs
+    # same thing but for backprop, so we store & output values of as and zs
     def propagation_save(self, input):
         a = [input] # list of activations, a0 = x = input
         z = [] # list of aw+b (before applying activation function)
@@ -31,12 +33,11 @@ class Network(object):
             a.append(sig(z[-1]))
         return a,z
 
-
     def prevision(self, input):
         return np.argmax(self.propagation(input))
 
     def stochGrad(self, batches_size, nb_epochs, training_data, learning_rate,
-        test_data=None, decrease=False):
+        test_data=None, decrease=False, reg_param=0):
         """ Now for the learning.
         Said stochastic since we're only going for steps on minibatches
         but it ends up being nearly as good and much faster.
@@ -58,7 +59,7 @@ class Network(object):
                         for k in xrange(0,nb_training,batches_size)]
             # let's train the nn for each batch !
             for batch in batches:
-                self.learnBatch(batch, learning_rate)
+                self.learnBatch(batch, learning_rate, reg_param, nb_training)
             if decrease:
                 learning_rate -= common_diff
             if (ep%every==0) and test_data: # if you want, print progress
@@ -66,12 +67,12 @@ class Network(object):
                 success_rate = float(successes)/nb_test
                 epochs.append(ep)
                 succ_rates.append(success_rate)
-                print("Epoch " + str(ep) + " : "
+                print("Epoch " + str(ep+1) + " : "
                 + str(successes) + "/" + str(nb_test)
                 + " ~ " + str(success_rate))
         return epochs, succ_rates
 
-    def learnBatch(self, batch, learning_rate):
+    def learnBatch(self, batch, learning_rate,reg_param,n):
         """ Learning from one batch of data
         We compute the gradient delta_grad_b delta_grad_w,
         for each pair (x,y) of the batch;
@@ -87,7 +88,8 @@ class Network(object):
             grad_b = [gb+dgb for gb,dgb in zip(grad_b,delta_grad_b)]
         # now let's slide down the hill of cost !
         ratio_learn = (learning_rate/len(batch))
-        self.weights = [w-ratio_learn*gw for w,gw in zip(self.weights,grad_w)]
+        reduc = 1-learning_rate*reg_param/n
+        self.weights = [reduc*w-ratio_learn*gw for w,gw in zip(self.weights,grad_w)]
         self.biases = [b-ratio_learn*gb for b,gb in zip(self.biases,grad_b)]
 
     def backpropagation(self, x,y):
@@ -97,16 +99,17 @@ class Network(object):
         delta_grad_w = [np.zeros(w.shape) for w in self.weights]
         delta_grad_b = [np.zeros(b.shape) for b in self.biases]
         a,z = self.propagation_save(x) # activations and zs
-        # Initialisation of backprop :
-        ## we have to test this ! delta = cost_der * a[-1]*(1-a[-1])
-        delta = cost_der(a[-1], y)*sig_prime(z[-1])
+        # Initialisation of backprop : (choice 1 or 2 of der)
+        delta = self.cost.delta(z[-1],a[-1],y)
+        ## delta = cost_der(a[-1], y)*sig_prime(z[-1])
         delta_grad_w[-1] = np.dot(delta,a[-2].T) # just check the definition ^^
         delta_grad_b[-1] = delta
         # looping backprop
         for l in xrange(2, self.nLayers): # we already initialized,
             # and b and w have one less layer than total number (bcz of input)
-            delta = np.dot(self.weights[-l+1].T, delta) * sig_prime(z[-l])
-            delta_grad_w[-l] = np.dot(delta,a[-l-1].T) # just check the definition ^^
+            ## delta = np.dot(self.weights[-l+1].T, delta) * sig_prime(z[-l])
+            delta = np.dot(self.weights[-l+1].T, delta) * a[-l]*(1-a[-l])
+            delta_grad_w[-l] = np.dot(delta,a[-l-1].T) # just check def
             delta_grad_b[-l] = delta
 
         return delta_grad_w, delta_grad_b
